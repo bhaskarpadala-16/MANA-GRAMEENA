@@ -1,0 +1,539 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+  SUPER_ADMIN
+
+  @@map("user_role")
+}
+
+enum AddressType {
+  SHIPPING
+  BILLING
+
+  @@map("address_type")
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("product_status")
+}
+
+enum InventoryTxType {
+  RESTOCK
+  ORDER_RESERVED
+  ORDER_FULFILLED
+  ORDER_CANCELLED
+  MANUAL_ADJUSTMENT
+
+  @@map("inventory_tx_type")
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+
+  @@map("discount_type")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  PACKED
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURNED
+
+  @@map("order_status")
+}
+
+enum PaymentMethod {
+  COD
+  MANUAL_UPI
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  FAILED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
+enum ShippingStatus {
+  PENDING
+  SHIPPED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+
+  @@map("shipping_status")
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("review_status")
+}
+
+// 1. Profiles (linked 1:1 with auth.users)
+model Profile {
+  id        String   @id @db.Uuid
+  role      UserRole @default(CUSTOMER)
+  firstName String   @map("first_name") @db.VarChar(100)
+  lastName  String   @map("last_name") @db.VarChar(100)
+  phone     String?  @unique @db.VarChar(20)
+  avatarUrl String?  @map("avatar_url")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  addresses             Address[]
+  cart                  Cart?
+  wishlist              Wishlist?
+  orders                Order[]
+  couponUsages          CouponUsage[]
+  paymentProofs         PaymentProof[]       @relation("CustomerPaymentProofs")
+  verifiedPaymentProofs PaymentProof[]       @relation("AdminVerifier")
+  reviews               Review[]
+  notifications         Notification[]
+  adminLogs             AdminActivityLog[]
+  inventoryLogs         InventoryTransaction[]
+
+  @@index([role])
+  @@map("profiles")
+}
+
+// 2. Addresses
+model Address {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String      @map("user_id") @db.Uuid
+  addressType  AddressType @default(SHIPPING) @map("address_type")
+  fullName     String      @map("full_name") @db.VarChar(150)
+  phone        String      @db.VarChar(20)
+  addressLine1 String      @map("address_line1") @db.VarChar(255)
+  addressLine2 String?     @map("address_line2") @db.VarChar(255)
+  landmark     String?     @db.VarChar(150)
+  city         String      @db.VarChar(100)
+  state        String      @db.VarChar(100)
+  postalCode   String      @map("postal_code") @db.VarChar(20)
+  country      String      @default("India") @db.VarChar(50)
+  isDefault    Boolean     @default(false) @map("is_default")
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// 3. Categories
+model Category {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String    @unique @db.VarChar(100)
+  slug         String    @unique @db.VarChar(120)
+  description  String?
+  imageUrl     String?   @map("image_url")
+  parentId     String?   @map("parent_id") @db.Uuid
+  displayOrder Int       @default(0) @map("display_order")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  parent   Category?  @relation("SubCategories", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("SubCategories")
+  products Product[]
+
+  @@index([slug])
+  @@map("categories")
+}
+
+// 4. Products
+model Product {
+  id                String        @id @default(uuid()) @db.Uuid
+  categoryId        String        @map("category_id") @db.Uuid
+  name              String        @db.VarChar(200)
+  slug              String        @unique @db.VarChar(220)
+  shortDescription  String        @map("short_description") @db.VarChar(300)
+  description       String
+  ingredients       String
+  benefits          String
+  usageInstructions String        @map("usage_instructions")
+  price             Decimal       @db.Decimal(10, 2)
+  discountPrice     Decimal?      @map("discount_price") @db.Decimal(10, 2)
+  sku               String        @unique @db.VarChar(50)
+  weightGrams       Int           @map("weight_grams")
+  isFeatured        Boolean       @default(false) @map("is_featured")
+  status            ProductStatus @default(DRAFT)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  category      Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images        ProductImage[]
+  variants      ProductVariant[]
+  inventory     Inventory[]
+  cartItems     CartItem[]
+  wishlistItems WishlistItem[]
+  orderItems    OrderItem[]
+  reviews       Review[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([status])
+  @@map("products")
+}
+
+// 5. Product Images
+model ProductImage {
+  id           String   @id @default(uuid()) @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  imageUrl     String   @map("image_url")
+  altText      String   @map("alt_text") @db.VarChar(200)
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+// 6. Product Variants
+model ProductVariant {
+  id            String   @id @default(uuid()) @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  title         String   @db.VarChar(100)
+  sku           String   @unique @db.VarChar(50)
+  priceOverride Decimal? @map("price_override") @db.Decimal(10, 2)
+  weightGrams   Int      @map("weight_grams")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory  Inventory[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+// 7. Inventory
+model Inventory {
+  id                String   @id @default(uuid()) @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  variantId         String?  @map("variant_id") @db.Uuid
+  stockQuantity     Int      @default(0) @map("stock_quantity")
+  reservedQuantity Int      @default(0) @map("reserved_quantity")
+  lowStockThreshold Int      @default(5) @map("low_stock_threshold")
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  product      Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant      ProductVariant?        @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  transactions InventoryTransaction[]
+
+  @@unique([productId, variantId])
+  @@index([productId])
+  @@map("inventory")
+}
+
+// 8. Inventory Transactions
+model InventoryTransaction {
+  id              String          @id @default(uuid()) @db.Uuid
+  inventoryId     String          @map("inventory_id") @db.Uuid
+  transactionType InventoryTxType @map("transaction_type")
+  quantityDelta   Int             @map("quantity_delta")
+  referenceId     String?         @map("reference_id") @db.VarChar(100)
+  notes           String?
+  createdBy       String?         @map("created_by") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+  creator   Profile?  @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([inventoryId])
+  @@map("inventory_transactions")
+}
+
+// 9. Carts
+model Cart {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  profile Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items   CartItem[]
+
+  @@map("carts")
+}
+
+// 10. Cart Items
+model CartItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  cartId    String   @map("cart_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  variantId String?  @map("variant_id") @db.Uuid
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  cart    Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([cartId, productId, variantId])
+  @@map("cart_items")
+}
+
+// 11. Wishlists
+model Wishlist {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  profile Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items   WishlistItem[]
+
+  @@map("wishlists")
+}
+
+// 12. Wishlist Items
+model WishlistItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  wishlistId String   @map("wishlist_id") @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  wishlist Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([wishlistId, productId])
+  @@map("wishlist_items")
+}
+
+// 13. Coupons
+model Coupon {
+  id                String       @id @default(uuid()) @db.Uuid
+  code              String       @unique @db.VarChar(50)
+  discountType      DiscountType @map("discount_type")
+  discountValue     Decimal      @map("discount_value") @db.Decimal(10, 2)
+  minOrderAmount    Decimal      @default(0) @map("min_order_amount") @db.Decimal(10, 2)
+  maxDiscountAmount Decimal?     @map("max_discount_amount") @db.Decimal(10, 2)
+  totalUsageLimit   Int?         @map("total_usage_limit")
+  perUserLimit      Int          @default(1) @map("per_user_limit")
+  usedCount         Int          @default(0) @map("used_count")
+  startDate         DateTime     @map("start_date") @db.Timestamptz
+  expiryDate        DateTime     @map("expiry_date") @db.Timestamptz
+  isActive          Boolean      @default(true) @map("is_active")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  usages CouponUsage[]
+
+  @@index([code])
+  @@map("coupons")
+}
+
+// 14. Coupon Usages
+model CouponUsage {
+  id              String   @id @default(uuid()) @db.Uuid
+  couponId        String   @map("coupon_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  orderId         String   @map("order_id") @db.Uuid
+  discountApplied Decimal  @map("discount_applied") @db.Decimal(10, 2)
+  usedAt          DateTime @default(now()) @map("used_at") @db.Timestamptz
+
+  coupon  Coupon  @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([couponId, userId])
+  @@map("coupon_usages")
+}
+
+// 15. Orders
+model Order {
+  id                       String        @id @default(uuid()) @db.Uuid
+  orderNumber              String        @unique @map("order_number") @db.VarChar(50)
+  userId                   String        @map("user_id") @db.Uuid
+  orderStatus              OrderStatus   @default(PENDING) @map("order_status")
+  paymentStatus            PaymentStatus @default(PENDING) @map("payment_status")
+  subtotal                 Decimal       @db.Decimal(10, 2)
+  discountAmount           Decimal       @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  shippingFee              Decimal       @default(0) @map("shipping_fee") @db.Decimal(10, 2)
+  totalAmount              Decimal       @map("total_amount") @db.Decimal(10, 2)
+  shippingAddressSnapshot  Json          @map("shipping_address_snapshot")
+  billingAddressSnapshot   Json          @map("billing_address_snapshot")
+  customerNotes            String?       @map("customer_notes")
+  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  profile      Profile       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items        OrderItem[]
+  payment      Payment?
+  shipment     Shipment?
+  couponUsages CouponUsage[]
+
+  @@index([userId])
+  @@index([orderStatus])
+  @@index([orderNumber])
+  @@map("orders")
+}
+
+// 16. Order Items
+model OrderItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  orderId             String   @map("order_id") @db.Uuid
+  productId           String   @map("product_id") @db.Uuid
+  variantId           String?  @map("variant_id") @db.Uuid
+  productNameSnapshot String   @map("product_name_snapshot") @db.VarChar(200)
+  skuSnapshot         String   @map("sku_snapshot") @db.VarChar(50)
+  unitPrice           Decimal  @map("unit_price") @db.Decimal(10, 2)
+  quantity            Int
+  totalPrice          Decimal  @map("total_price") @db.Decimal(10, 2)
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// 17. Payments
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  orderId        String        @unique @map("order_id") @db.Uuid
+  paymentMethod  PaymentMethod @map("payment_method")
+  paymentStatus  PaymentStatus @default(PENDING) @map("payment_status")
+  amount         Decimal       @db.Decimal(10, 2)
+  transactionRef String?       @map("transaction_ref") @db.VarChar(100)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  order Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  proof PaymentProof?
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+// 18. Payment Proofs
+model PaymentProof {
+  id                     String        @id @default(uuid()) @db.Uuid
+  paymentId              String        @unique @map("payment_id") @db.Uuid
+  userId                 String        @map("user_id") @db.Uuid
+  screenshotStoragePath  String        @map("screenshot_storage_path")
+  transactionReferenceId String        @map("transaction_reference_id") @db.VarChar(100)
+  reviewStatus           PaymentStatus @default(UNDER_REVIEW) @map("review_status")
+  adminNotes             String?       @map("admin_notes")
+  verifiedBy             String?       @map("verified_by") @db.Uuid
+  verifiedAt             DateTime?     @map("verified_at") @db.Timestamptz
+  createdAt              DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  payment  Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  user     Profile  @relation("CustomerPaymentProofs", fields: [userId], references: [id], onDelete: Restrict)
+  verifier Profile? @relation("AdminVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull)
+
+  @@index([reviewStatus])
+  @@map("payment_proofs")
+}
+
+// 19. Shipments
+model Shipment {
+  id                String         @id @default(uuid()) @db.Uuid
+  orderId           String         @unique @map("order_id") @db.Uuid
+  carrierName       String         @default("Manual / Local Courier") @map("carrier_name") @db.VarChar(100)
+  trackingNumber    String?        @map("tracking_number") @db.VarChar(100)
+  trackingUrl       String?        @map("tracking_url")
+  shippingStatus    ShippingStatus @default(PENDING) @map("shipping_status")
+  estimatedDelivery DateTime?      @map("estimated_delivery") @db.Date
+  shippedAt         DateTime?      @map("shipped_at") @db.Timestamptz
+  deliveredAt       DateTime?      @map("delivered_at") @db.Timestamptz
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("shipments")
+}
+
+// 20. Reviews
+model Review {
+  id                 String       @id @default(uuid()) @db.Uuid
+  productId          String       @map("product_id") @db.Uuid
+  userId             String       @map("user_id") @db.Uuid
+  rating             Int          @db.SmallInt
+  reviewText         String       @map("review_text")
+  isVerifiedPurchase Boolean      @default(false) @map("is_verified_purchase")
+  status             ReviewStatus @default(PENDING)
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, userId])
+  @@index([productId, status])
+  @@map("reviews")
+}
+
+// 21. Notifications
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String   @db.VarChar(150)
+  message   String
+  linkUrl   String?  @map("link_url") @db.VarChar(255)
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// 22. Admin Activity Logs
+model AdminActivityLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String   @map("actor_id") @db.Uuid
+  action    String   @db.VarChar(100)
+  entity    String   @db.VarChar(50)
+  entityId  String   @map("entity_id") @db.VarChar(100)
+  oldValues Json?    @map("old_values")
+  newValues Json?    @map("new_values")
+  ipAddress String?  @map("ip_address") @db.VarChar(50)
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  actor Profile @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId])
+  @@index([createdAt(sort: Desc)])
+  @@map("admin_activity_logs")
+}
