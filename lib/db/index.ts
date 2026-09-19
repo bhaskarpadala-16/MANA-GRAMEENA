@@ -20,8 +20,23 @@ function createPrismaClient(): PrismaClient {
     );
   }
 
+  // Ensure SSL encryption is enabled while accepting the Supabase transaction pooler's certificate chain.
+  // Note: in node-postgres, ConnectionParameters parses connectionString and overwrites config.ssl
+  // if sslmode is present in the URL query string. To make the configuration deterministic and prevent
+  // the URL parser from resetting ssl to { rejectUnauthorized: true }, we strip any sslmode query
+  // parameter from connectionString and explicitly pass ssl: { rejectUnauthorized: false }.
+  let poolConnectionString = connectionString;
+  try {
+    const url = new URL(connectionString);
+    url.searchParams.delete('sslmode');
+    poolConnectionString = url.toString();
+  } catch {
+    // If URL parsing fails, fallback to raw connectionString
+  }
+
   const pool = new Pool({
-    connectionString,
+    connectionString: poolConnectionString,
+    ssl: { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
