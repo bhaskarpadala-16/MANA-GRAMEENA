@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "test:security": "tsx scripts/verify-phase1.ts",
     "test:security:rls": "tsx scripts/verify-phase2.ts",
