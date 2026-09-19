@@ -23,7 +23,14 @@ export async function GET() {
         },
       }
     );
-  } catch {
+  } catch (err: any) {
+    const rawMsg = err?.message || String(err);
+    const sanitizedMsg = rawMsg.replace(/:\/\/[^@]+@/g, '://***:***@');
+    console.error('[Health Check Ready Error]:', {
+      name: err?.name,
+      code: err?.code,
+      message: sanitizedMsg,
+    });
     return NextResponse.json(
       {
         status: 'unavailable',
