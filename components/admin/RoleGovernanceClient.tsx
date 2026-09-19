@@ -13,8 +13,9 @@ interface AdminUserItem {
   lastName: string;
   role: UserRole;
   isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  assignedSince?: string;
   _count?: { adminLogs: number };
 }
 
@@ -158,13 +159,24 @@ export function RoleGovernanceClient({
                 const isSelf = u.id === currentSuperAdminId;
                 const isSuper = u.role === UserRole.SUPER_ADMIN;
 
+                const initialFirst = u.firstName ? u.firstName[0] : 'A';
+                const initialLast = u.lastName ? u.lastName[0] : '';
+                const displayDate =
+                  u.assignedSince ||
+                  new Date(u.createdAt).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    timeZone: 'Asia/Kolkata',
+                  });
+
                 return (
                   <tr key={u.id} className="hover:bg-herbal-800/30 transition-colors">
                     <td className="py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-herbal-800 border border-gold-500/30 text-gold-400 flex items-center justify-center font-bold text-xs">
-                          {u.firstName[0]}
-                          {u.lastName[0]}
+                          {initialFirst}
+                          {initialLast}
                         </div>
                         <div>
                           <span className="font-semibold text-cream-100">
@@ -200,7 +212,7 @@ export function RoleGovernanceClient({
                     </td>
 
                     <td className="py-3 text-cream-400">
-                      {new Date(u.createdAt).toLocaleDateString('en-IN')}
+                      {displayDate}
                     </td>
 
                     <td className="py-3 text-right">

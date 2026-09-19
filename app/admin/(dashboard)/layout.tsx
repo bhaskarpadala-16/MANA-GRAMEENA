@@ -1,5 +1,6 @@
 import 'server-only';
 import React from 'react';
+import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/auth/guards';
 import prisma from '@/lib/db';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
@@ -15,7 +16,18 @@ export default async function AdminDashboardLayout({
   children: React.ReactNode;
 }) {
   // Enforces server-side database authentication and role verification
-  const user = await requireAdmin();
+  let user;
+  try {
+    user = await requireAdmin();
+  } catch (authError: any) {
+    if (authError?.message?.includes('UNAUTHORIZED')) {
+      redirect('/admin/login');
+    }
+    if (authError?.message?.includes('FORBIDDEN')) {
+      redirect('/admin/login?error=AccessDenied');
+    }
+    throw authError;
+  }
 
   // Load real-time operational badge counts
   const [pendingOrdersCount, pendingPaymentCount, lowStockCount] = await Promise.all([

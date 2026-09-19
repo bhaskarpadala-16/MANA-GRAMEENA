@@ -743,27 +743,63 @@ export async function getAdminCustomerDetail(customerId: string) {
 // 6. ROLES & GOVERNANCE
 // ---------------------------------------------------------------------------
 
-export async function getAdminUsers() {
-  return await prisma.profile.findMany({
-    where: {
-      role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
-    },
-    orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      role: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: {
-        select: {
-          adminLogs: true,
+export interface AdminUserDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  assignedSince: string;
+  _count?: {
+    adminLogs: number;
+  };
+}
+
+export async function getAdminUsers(): Promise<AdminUserDto[]> {
+  try {
+    const users = await prisma.profile.findMany({
+      where: {
+        role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
+      },
+      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            adminLogs: true,
+          },
         },
       },
-    },
-  });
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      role: u.role,
+      isActive: u.isActive,
+      createdAt: u.createdAt.toISOString(),
+      updatedAt: u.updatedAt.toISOString(),
+      assignedSince: u.createdAt.toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      }),
+      _count: u._count,
+    }));
+  } catch (error: any) {
+    console.error('Database query failure in getAdminUsers:', error);
+    throw new Error('DATABASE_ERROR: Unable to load administrative personnel.');
+  }
 }
 
 // ---------------------------------------------------------------------------
