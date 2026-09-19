@@ -232,11 +232,13 @@ model ProductVariant {
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  inventory  Inventory[]
-  cartItems  CartItem[]
-  orderItems OrderItem[]
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory     Inventory[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  wishlistItems WishlistItem[]
 
+  @@unique([id, productId])
   @@index([productId])
   @@map("product_variants")
 }
@@ -252,7 +254,7 @@ model Inventory {
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   product      Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
-  variant      ProductVariant?        @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  variant      ProductVariant?        @relation(fields: [variantId, productId], references: [id, productId], onDelete: Cascade)
   transactions InventoryTransaction[]
 
   @@unique([productId, variantId])
@@ -303,7 +305,7 @@ model CartItem {
 
   cart    Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
-  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variant ProductVariant? @relation(fields: [variantId, productId], references: [id, productId], onDelete: Restrict)
 
   @@unique([cartId, productId, variantId])
   @@map("cart_items")
@@ -326,12 +328,15 @@ model WishlistItem {
   id         String   @id @default(uuid()) @db.Uuid
   wishlistId String   @map("wishlist_id") @db.Uuid
   productId  String   @map("product_id") @db.Uuid
+  variantId  String?  @map("variant_id") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  wishlist Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  wishlist Wishlist        @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  product  Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant  ProductVariant? @relation(fields: [variantId, productId], references: [id, productId], onDelete: Cascade)
 
-  @@unique([wishlistId, productId])
+  @@index([wishlistId])
+  @@index([productId])
   @@map("wishlist_items")
 }
 
@@ -417,7 +422,7 @@ model OrderItem {
 
   order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
-  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variant ProductVariant? @relation(fields: [variantId, productId], references: [id, productId], onDelete: Restrict)
 
   @@index([orderId])
   @@map("order_items")

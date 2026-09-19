@@ -13,5 +13,73 @@
 - App Router foundation: globals.css (herbal palette), layout.tsx, page.tsx (with 3D botanical canvas), and semantic route placeholders.
 - Automated verification suite (scripts/verify-phase1.ts): 8/8 tests passed (secret isolation, model counts, server-only barriers).
 - TypeScript check (npx tsc --noEmit): Passed with 0 errors.
-- Production build (npx next build): Passed with 18/18 static and dynamic routes generated cleanly.
 - CodeRabbit review: Completed. All imports, types, and server-only barriers verified.
+
+[2026-09-15] PHASE 2: DATABASE ARCHITECTURE, POSTGRESQL RLS & SEEDING ENGINE — SUCCESS
+- Documentation correction: PGlite verification engine accurately documented as reporting PostgreSQL 18.3 (WASM compiled), not PostgreSQL 16.
+- Migration sequencing strictly preserved:
+  * 20260915000000_init: 22 tables, enums, FKs, and 6 partial unique indexes
+  * 20260915000001_rls_policies: RLS activation on all 22 tables, is_admin(), is_super_admin(), and anti-escalation trigger
+  * 0_init_partial_indexes completely removed to eliminate timestamp/sorting hazards
+- PostgreSQL Row-Level Security (RLS) policies implemented across all 22 normalized models.
+- Anti-role-escalation trigger: prevent_profile_role_escalation() enforces that customers cannot alter their own or other users' roles, and regular admins cannot assign the SUPER_ADMIN role.
+- Legitimate review verification: Zero-trust RLS check requires delivered purchase of the product before allowing review insertion, preventing forged verified reviews.
+- Payment proof security: Private access control; customer can upload under-review proof, but cannot forge verification or review status.
+- Idempotent seed engine (prisma/seed.ts) tested and verified against real PostgreSQL instance; 100% count parity across repeated executions.
+- Zero fake credentials, zero mock passwords, zero dummy payment gateways.
+- 38/38 checks passed in automated Phase 2 verification suite (scripts/verify-phase2.ts).
+- TypeScript check (npx tsc --noEmit): Passed with 0 errors.
+- Production build (npx next build): Passed with 18/18 static and dynamic routes generated cleanly.
+
+[2026-09-16] PHASE 3: AUTHENTICATION & AUTHORIZATION FOUNDATION — SUCCESS
+- Next.js 16 proxy.ts implemented with @supabase/ssr session refresh and route deflection.
+- proxy.ts -> lib/supabase/proxy.ts uses supabase.auth.getClaims() for cryptographic JWT validation; low-level getSession() strictly avoided.
+- Server-side authorization guards (lib/auth/guards.ts & lib/auth/session.ts) established independently of proxy:
+  * requireAuthenticatedUser() / requireAuth()
+  * requireCustomer()
+  * requireAdmin()
+  * requireSuperAdmin()
+- Sourced exclusively from PostgreSQL public.profiles linked 1:1 to auth.users.id.
+- Zero-trust anti-escalation preserved: customers cannot modify roles; regular admins cannot promote or demote SUPER_ADMIN.
+- Dual-layer profile provisioning: PostgreSQL trigger + self-healing fallback in getCurrentUser() guarantees valid CUSTOMER profile and prevents zombie user accounts.
+- Dedicated authentication separation: Customer login at /login; Administrator login at /admin/login (immediately terminates session if non-admin attempts login).
+- Password recovery (/auth/callback & /reset-password) and email signup confirmation (/auth/confirm) strictly separated.
+- Anti-enumeration guarantee: /forgot-password returns uniform generic message preventing account mapping.
+- Open redirect defense: getSafeRedirectUrl() sanitizes return URLs against protocol-relative (//), backslash (/\\), and CRLF attacks.
+- Anti-cache defense: All authenticated routes export dynamic = 'force-dynamic' with Cache-Control: private, no-cache, no-store headers.
+- Customer account shells (/account, /profile, /addresses, /orders, /wishlist, /notifications) and admin shells (/admin, /products, /orders, /inventory, /customers, /reviews, /coupons, /notifications, /activity) established as secure authorization shells without out-of-scope business logic.
+- Automated Phase 3 verification suite (scripts/verify-phase3.ts): 55/55 checks passed.
+- Regression verification: Phase 1 suite (8/8 PASS) and Phase 2 RLS suite (48/48 PASS) confirmed 100% green.
+- TypeScript check (npx tsc --noEmit): Passed with 0 errors.
+- Production build (npx next build): Passed cleanly with 19 static/dynamic routes and proxy middleware compiled via Turbopack.
+- Zero fake users, zero mock passwords, zero hardcoded credentials.
+
+[2026-09-18] PHASE 4 & PHASE 5: LIVE SUPABASE INTEGRATION & STOREFRONT E-COMMERCE — SUCCESS
+- Phase 4: Live Supabase Integration, database security, auth triggers, RLS verified (52/52 checks passed).
+- Phase 5: Complete customer storefront, catalog browsing, cart, checkout, manual UPI/COD flows, order tracking, address book, reviews, and notifications implemented (49/49 checks passed).
+- Total automated regression checks across Phases 1-5: 212/212 PASS.
+
+[2026-09-19] PHASE 6 PRE-FLIGHT SECURITY REMEDIATION — SUCCESS
+- Forward-only migration: prisma/migrations/20260919000000_security_definer_hardening/migration.sql applied.
+- Revoked EXECUTE from public/anon for handle_new_user(), prevent_profile_role_escalation(), rls_auto_enable(), is_super_admin().
+- is_admin() execute granted to authenticated and service_role.
+- Supabase Security Advisor checks: 0 security definer execution findings, 0 mutable search_path findings, 22/22 RLS enabled.
+
+[2026-09-19] PHASE 6: ADMIN / OWNER DASHBOARD & OPERATIONS — SUCCESS
+- Administrative layouts, navigation, and role-guarded routes implemented for all 20 admin views.
+- Strict authorization boundary: requireAdmin() and requireSuperAdmin() applied across server components and Server Actions.
+- Atomic inventory management: downward adjustments use atomic conditional SQL updates preventing negative stock and respecting reservations under concurrency.
+- Scoped product image deletion: verifies image ownership relative to parent product before deletion.
+- Robust schema validation: Zod schemas applied across all admin mutations, including coupon active toggling.
+- Zero payment gateway dependencies; zero fabricated storage URLs; manual UPI proof verification workflow.
+- Audit logging: privileged actions logged with sensitive credential redaction.
+- Phase 6 Automated Verification Suite (scripts/verify-phase6.ts): 38/38 tests passed.
+- All Regression Suites Verified:
+  * Phase 1: 8/8 PASS
+  * Phase 2: 48/48 PASS
+  * Phase 3: 55/55 PASS
+  * Pre-Flight Security: PASS
+  * Secret Scan: 0 leaks
+  * TypeScript (tsc --noEmit): 0 errors
+  * ESLint (npm run lint): 0 errors
+  * Production Build (next build): PASS (all 39 routes generated)

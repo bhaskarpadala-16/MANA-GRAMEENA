@@ -101,7 +101,7 @@ function runVerification() {
       const fullPath = path.join(dir, file);
       if (fs.statSync(fullPath).isDirectory()) {
         scanDir(fullPath);
-      } else if (file.endsWith('.ts') || file.endsWith('.tsx') || file.endsWith('.js')) {
+      } else if (/\.(?:[cm]?[jt]sx?)$/.test(file)) {
         const content = fs.readFileSync(fullPath, 'utf8');
         // Check if a client component imports or references secrets
         const isClientComponent = content.includes("'use client'") || content.includes('"use client"');

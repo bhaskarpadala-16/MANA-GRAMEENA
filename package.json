@@ -6,39 +6,46 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "tsc --noEmit",
     "prisma:generate": "prisma generate",
-    "test:security": "tsx scripts/verify-security.ts"
+    "test:security": "tsx scripts/verify-phase1.ts",
+    "test:security:rls": "tsx scripts/verify-phase2.ts",
+    "test:security:auth": "tsx --conditions=react-server scripts/verify-phase3.ts",
+    "test:security:integration": "tsx scripts/verify-phase4.ts"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "@react-three/drei": "10.7.8",
+    "@react-three/fiber": "9.7.0",
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.116.0",
+    "clsx": "2.1.1",
+    "framer-motion": "12.43.0",
+    "lucide-react": "0.475.0",
     "next": "16.3.5",
+    "pg": "8.23.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "@prisma/client": "7.10.0",
-    "@prisma/adapter-pg": "7.10.0",
-    "pg": "8.23.0",
-    "@supabase/supabase-js": "2.116.0",
-    "@supabase/ssr": "0.12.7",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "3.0.1",
     "three": "0.170.0",
-    "@react-three/fiber": "9.7.0",
-    "@react-three/drei": "10.7.8",
-    "framer-motion": "12.43.0",
-    "zod": "3.24.2",
-    "lucide-react": "0.475.0",
-    "clsx": "2.1.1",
-    "tailwind-merge": "3.0.1"
+    "zod": "3.24.2"
   },
   "devDependencies": {
-    "prisma": "7.10.0",
-    "typescript": "5.5.4",
     "@types/node": "20.14.0",
     "@types/pg": "8.23.1",
     "@types/react": "19.0.10",
     "@types/react-dom": "19.0.4",
     "@types/three": "0.170.0",
-    "tailwindcss": "3.4.17",
-    "postcss": "8.5.28",
     "autoprefixer": "10.4.20",
-    "tsx": "4.23.13"
+    "postcss": "8.5.28",
+    "prisma": "7.10.0",
+    "tailwindcss": "3.4.17",
+    "tsx": "4.23.13",
+    "typescript": "5.5.4"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }

@@ -12,3 +12,13 @@
 - [x] Task 1.9: Implement automated security and build verification tests
 - [x] Task 1.10: Execute full TypeScript check and next build production compilation test
 - [x] Task 1.11: Review code with CodeRabbit and document findings and fixes
+
+## Phase 2 Tasks: Database Architecture, PostgreSQL RLS Policies & Seeding Engine
+- [x] Task 2.1: Correct Phase 1 documentation to accurately reflect PostgreSQL 18.3 (PGlite engine)
+- [x] Task 2.2: Implement PostgreSQL Row-Level Security (RLS) policies for all 22 tables (prisma/migrations/20260915000001_rls_policies/migration.sql)
+- [x] Task 2.3: Implement idempotent Prisma seed engine (prisma/seed.ts) for Mana Grameena herbal catalog
+- [x] Task 2.4: Configure package.json with Prisma seed script definition
+- [x] Task 2.5: Build automated Phase 2 verification suite (scripts/verify-phase2.ts)
+- [x] Task 2.6: Run full verification battery (Prisma validate/generate, TypeScript check, build, verify-phase1, verify-phase2)
+- [x] Task 2.7: Run CodeRabbit review & Ralph Loop verification
+- [x] Task 2.8: Document Phase 2 completion, git status, and credentials gate report

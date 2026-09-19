@@ -12,15 +12,12 @@ import { PrismaClient } from '@prisma/client';
  * never leak into client browser bundles.
  */
 
-const connectionString = process.env.DATABASE_URL;
-
 function createPrismaClient(): PrismaClient {
+  const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    // Return un-initialized client placeholder if credentials are not yet configured.
-    // Real queries will require DATABASE_URL in .env.
-    const pool = new Pool({ connectionString: 'postgresql://placeholder:placeholder@localhost:5432/placeholder' });
-    const adapter = new PrismaPg(pool);
-    return new PrismaClient({ adapter });
+    throw new Error(
+      'DATABASE_URL environment variable is not configured. Please supply a valid PostgreSQL connection string in .env.'
+    );
   }
 
   const pool = new Pool({
@@ -38,10 +35,15 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    if (!globalForPrisma.prisma) {
+      globalForPrisma.prisma = createPrismaClient();
+    }
+    const client = globalForPrisma.prisma;
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 export default prisma;

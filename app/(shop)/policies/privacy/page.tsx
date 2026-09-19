@@ -19,7 +19,7 @@ export default function PrivacyPolicyPage() {
         <h2 className="font-semibold text-base mt-4">1. Data Collected</h2>
         <p>We collect essential order details including your name, shipping address, phone number, and email strictly to fulfill orders and provide order tracking.</p>
         <h2 className="font-semibold text-base mt-4">2. Payment Verification Security</h2>
-        <p>Payment screenshots uploaded for Manual UPI verification are stored in isolated, private storage buckets accessible only by you and authorized administrators.</p>
+        <p>Payment transaction references submitted for order verification are strictly access-controlled and accessible only by you and authorized administrators. Dedicated storage for payment documentation will be provisioned in an isolated private bucket prior to screenshot activation.</p>
         <h2 className="font-semibold text-base mt-4">3. No Third-Party Data Selling</h2>
         <p>We do not sell, rent, or trade your personal information to any third parties.</p>
       </div>
