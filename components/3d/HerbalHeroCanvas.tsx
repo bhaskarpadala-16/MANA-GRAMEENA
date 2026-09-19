@@ -5,6 +5,9 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Float } from '@react-three/drei';
 import * as THREE from 'three';
 
+import BotanicalFallback from '@/components/3d/BotanicalFallback';
+import { WebGLErrorBoundary } from '@/components/3d/WebGLErrorBoundary';
+
 function BotanicalElement() {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -33,15 +36,17 @@ function BotanicalElement() {
 export default function HerbalHeroCanvas() {
   return (
     <div className="relative w-full h-[360px] md:h-[440px] flex items-center justify-center">
-      <Canvas
-        camera={{ position: [0, 0, 4.5], fov: 45 }}
-        gl={{ antialias: true, alpha: true }}
-      >
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[5, 8, 5]} intensity={1.2} />
-        <pointLight position={[-4, -4, -2]} color="#dfac50" intensity={0.8} />
-        <BotanicalElement />
-      </Canvas>
+      <WebGLErrorBoundary fallback={<BotanicalFallback />}>
+        <Canvas
+          camera={{ position: [0, 0, 4.5], fov: 45 }}
+          gl={{ antialias: true, alpha: true }}
+        >
+          <ambientLight intensity={0.7} />
+          <directionalLight position={[5, 8, 5]} intensity={1.2} />
+          <pointLight position={[-4, -4, -2]} color="#dfac50" intensity={0.8} />
+          <BotanicalElement />
+        </Canvas>
+      </WebGLErrorBoundary>
     </div>
   );
 }

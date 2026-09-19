@@ -236,6 +236,12 @@ async function main() {
     );
     assert(pageContent.includes('HerbalHeroClient'), 'HomePage renders HerbalHeroClient wrapper');
     assert(clientWrapperContent.includes('BotanicalFallback'), 'Three.js component has BotanicalFallback loading placeholder');
+    const boundaryPath = path.resolve(process.cwd(), 'components/3d/WebGLErrorBoundary.tsx');
+    const webglCheckPath = path.resolve(process.cwd(), 'components/3d/webgl-check.ts');
+    assert(fs.existsSync(boundaryPath), 'components/3d/WebGLErrorBoundary.tsx exists');
+    assert(fs.existsSync(webglCheckPath), 'components/3d/webgl-check.ts exists');
+    assert(clientWrapperContent.includes('WebGLErrorBoundary'), 'HerbalHeroClient wraps 3D canvas in WebGLErrorBoundary');
+    assert(clientWrapperContent.includes('isWebGLAvailable'), 'HerbalHeroClient performs isWebGLAvailable client capability check');
   } catch (err: any) {
     assert(false, 'Three.js lazy loading verification passed', err?.message);
   }
