@@ -184,8 +184,6 @@ export async function updateOrderStatusAction(rawInput: unknown) {
     revalidatePath('/admin/inventory');
     revalidatePath('/admin');
     revalidatePath('/admin/dashboard');
-    revalidatePath(`/orders/${orderId}`);
-    revalidatePath('/account/orders');
 
     return { success: true, newStatus };
   } catch (error: any) {
@@ -319,9 +317,20 @@ export async function updateShipmentTrackingAction(rawInput: unknown) {
 
     revalidatePath('/admin/orders');
     revalidatePath(`/admin/orders/${orderId}`);
-    revalidatePath(`/orders/${orderId}`);
 
-    return { success: true, shipment };
+    return {
+      success: true,
+      shipment: {
+        id: shipment.id,
+        orderId: shipment.orderId,
+        carrierName: shipment.carrierName,
+        trackingNumber: shipment.trackingNumber,
+        trackingUrl: shipment.trackingUrl,
+        shippingStatus: shipment.shippingStatus,
+        estimatedDelivery: shipment.estimatedDelivery?.toISOString() ?? null,
+        shippedAt: shipment.shippedAt?.toISOString() ?? null,
+      },
+    };
   } catch (error: any) {
     return {
       success: false,

@@ -31,8 +31,8 @@ interface OrderDetailClientProps {
     totalAmount: any;
     customerNotes?: string | null;
     shippingAddressSnapshot: any;
-    billingAddressSnapshot: any;
-    createdAt: Date;
+    createdAt: string | Date;
+    placedAt?: string;
     profile: {
       id: string;
       firstName: string;
@@ -137,7 +137,11 @@ export function OrderDetailClient({ order }: OrderDetailClientProps) {
             <AdminBadge status={order.orderStatus} size="md" />
           </div>
           <p className="text-xs text-cream-400 mt-1">
-            Placed on {new Date(order.createdAt).toLocaleString('en-IN')}
+            Placed on{' '}
+            {order.placedAt ||
+              new Date(order.createdAt).toLocaleString('en-IN', {
+                timeZone: 'Asia/Kolkata',
+              })}
           </p>
         </div>
 

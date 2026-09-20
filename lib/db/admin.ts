@@ -5,6 +5,7 @@ import {
   PaymentStatus,
   ProductStatus,
   ReviewStatus,
+  ShippingStatus,
   UserRole,
   Prisma,
 } from '@prisma/client';
@@ -538,8 +539,68 @@ export async function getAdminOrders(params?: AdminOrderFilterParams) {
   };
 }
 
-export async function getAdminOrderDetail(orderId: string) {
-  return await prisma.order.findUnique({
+export interface AdminOrderDetailDto {
+  id: string;
+  orderNumber: string;
+  orderStatus: OrderStatus;
+  paymentStatus: PaymentStatus;
+  subtotal: number;
+  discountAmount: number;
+  shippingFee: number;
+  totalAmount: number;
+  customerNotes?: string | null;
+  shippingAddressSnapshot: any;
+  billingAddressSnapshot: any;
+  createdAt: Date;
+  placedAt: string;
+  profile: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone?: string | null;
+  };
+  items: {
+    id: string;
+    productNameSnapshot: string;
+    skuSnapshot: string;
+    unitPrice: number;
+    quantity: number;
+    totalPrice: number;
+    variant?: { title: string } | null;
+  }[];
+  payment?: {
+    id: string;
+    paymentMethod: string;
+    paymentStatus: PaymentStatus;
+    amount: number;
+    transactionRef?: string | null;
+    proof?: {
+      id: string;
+      transactionReferenceId: string;
+      reviewStatus: string;
+      adminNotes?: string | null;
+    } | null;
+  } | null;
+  shipment?: {
+    id: string;
+    carrierName: string;
+    trackingNumber?: string | null;
+    trackingUrl?: string | null;
+    shippingStatus: ShippingStatus;
+    estimatedDelivery?: Date | null;
+    shippedAt?: Date | null;
+  } | null;
+  couponUsages?: {
+    coupon: {
+      code: string;
+      discountType: string;
+      discountValue: number;
+    };
+  }[];
+}
+
+export async function getAdminOrderDetail(orderId: string): Promise<AdminOrderDetailDto | null> {
+  const o = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
       profile: {
@@ -597,6 +658,81 @@ export async function getAdminOrderDetail(orderId: string) {
       },
     },
   });
+
+  if (!o) return null;
+
+  return {
+    id: o.id,
+    orderNumber: o.orderNumber,
+    orderStatus: o.orderStatus,
+    paymentStatus: o.paymentStatus,
+    subtotal: Number(o.subtotal),
+    discountAmount: Number(o.discountAmount),
+    shippingFee: Number(o.shippingFee),
+    totalAmount: Number(o.totalAmount),
+    customerNotes: o.customerNotes,
+    shippingAddressSnapshot: o.shippingAddressSnapshot,
+    billingAddressSnapshot: o.billingAddressSnapshot,
+    createdAt: o.createdAt,
+    placedAt: o.createdAt.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    }),
+    profile: {
+      id: o.profile.id,
+      firstName: o.profile.firstName,
+      lastName: o.profile.lastName,
+      phone: o.profile.phone,
+    },
+    items: o.items.map((item) => ({
+      id: item.id,
+      productNameSnapshot: item.productNameSnapshot,
+      skuSnapshot: item.skuSnapshot,
+      unitPrice: Number(item.unitPrice),
+      quantity: item.quantity,
+      totalPrice: Number(item.totalPrice),
+      variant: item.variant ? { title: item.variant.title } : null,
+    })),
+    payment: o.payment
+      ? {
+          id: o.payment.id,
+          paymentMethod: o.payment.paymentMethod,
+          paymentStatus: o.payment.paymentStatus,
+          amount: Number(o.payment.amount),
+          transactionRef: o.payment.transactionRef,
+          proof: o.payment.proof
+            ? {
+                id: o.payment.proof.id,
+                transactionReferenceId: o.payment.proof.transactionReferenceId,
+                reviewStatus: o.payment.proof.reviewStatus,
+                adminNotes: o.payment.proof.adminNotes,
+              }
+            : null,
+        }
+      : null,
+    shipment: o.shipment
+      ? {
+          id: o.shipment.id,
+          carrierName: o.shipment.carrierName,
+          trackingNumber: o.shipment.trackingNumber,
+          trackingUrl: o.shipment.trackingUrl,
+          shippingStatus: o.shipment.shippingStatus,
+          estimatedDelivery: o.shipment.estimatedDelivery,
+          shippedAt: o.shipment.shippedAt,
+        }
+      : null,
+    couponUsages: o.couponUsages.map((cu) => ({
+      coupon: {
+        code: cu.coupon.code,
+        discountType: cu.coupon.discountType,
+        discountValue: Number(cu.coupon.discountValue),
+      },
+    })),
+  };
 }
 
 export async function getAdminPendingPaymentProofs() {
