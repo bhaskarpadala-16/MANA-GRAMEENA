@@ -589,6 +589,7 @@ export interface AdminOrderDetailDto {
     shippingStatus: ShippingStatus;
     estimatedDelivery?: Date | null;
     shippedAt?: Date | null;
+    deliveredAt?: Date | null;
   } | null;
   couponUsages?: {
     coupon: {
@@ -723,6 +724,7 @@ export async function getAdminOrderDetail(orderId: string): Promise<AdminOrderDe
           shippingStatus: o.shipment.shippingStatus,
           estimatedDelivery: o.shipment.estimatedDelivery,
           shippedAt: o.shipment.shippedAt,
+          deliveredAt: o.shipment.deliveredAt,
         }
       : null,
     couponUsages: o.couponUsages.map((cu) => ({

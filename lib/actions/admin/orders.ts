@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import prisma from '@/lib/db';
-import { requireAdmin } from '@/lib/auth/guards';
+import { requireAdmin, type AuthenticatedUser } from '@/lib/auth/guards';
 import { OrderStatus, PaymentStatus, ShippingStatus, InventoryTxType } from '@prisma/client';
 import { recordAdminActivity } from './audit';
 import { logger } from '@/lib/observability/logger';
@@ -39,8 +39,11 @@ const UpdateShipmentSchema = z.object({
 /**
  * Updates order status with strict state machine validation and atomic inventory management.
  */
-export async function updateOrderStatusAction(rawInput: unknown) {
-  const admin = await requireAdmin();
+export async function updateOrderStatusAction(
+  rawInput: unknown,
+  executorAdmin?: AuthenticatedUser
+) {
+  const admin = await requireAdmin(executorAdmin);
   const parsed = UpdateOrderStatusSchema.safeParse(rawInput);
 
   if (!parsed.success) {
@@ -63,6 +66,10 @@ export async function updateOrderStatusAction(rawInput: unknown) {
     }
 
     const currentStatus = order.orderStatus;
+    if (currentStatus === newStatus) {
+      return { success: true, newStatus };
+    }
+
     const allowedNext = VALID_TRANSITIONS[currentStatus];
 
     if (!allowedNext.includes(newStatus)) {
@@ -121,39 +128,65 @@ export async function updateOrderStatusAction(rawInput: unknown) {
         }
       } else if (newStatus === OrderStatus.DELIVERED) {
         // Fulfill reserved inventory (decrement both stock and reserved)
-        for (const item of order.items) {
-          const inv = await tx.inventory.findFirst({
-            where: {
-              productId: item.productId,
-              variantId: item.variantId ?? null,
-            },
-          });
+        // Idempotency: ensure fulfillment runs exactly once
+        const alreadyFulfilled = await tx.inventoryTransaction.findFirst({
+          where: {
+            referenceId: order.orderNumber,
+            transactionType: InventoryTxType.ORDER_FULFILLED,
+          },
+        });
 
-          if (inv) {
-            await tx.inventory.update({
-              where: { id: inv.id },
-              data: {
-                stockQuantity: {
-                  decrement: Math.min(inv.stockQuantity, item.quantity),
-                },
-                reservedQuantity: {
-                  decrement: Math.min(inv.reservedQuantity, item.quantity),
-                },
+        if (!alreadyFulfilled) {
+          for (const item of order.items) {
+            const inv = await tx.inventory.findFirst({
+              where: {
+                productId: item.productId,
+                variantId: item.variantId ?? null,
               },
             });
 
-            await tx.inventoryTransaction.create({
-              data: {
-                inventoryId: inv.id,
-                transactionType: InventoryTxType.ORDER_FULFILLED,
-                quantityDelta: -item.quantity,
-                referenceId: order.orderNumber,
-                notes: `Order delivered and fulfilled #${order.orderNumber}`,
-                createdBy: admin.id,
-              },
-            });
+            if (inv) {
+              await tx.inventory.update({
+                where: { id: inv.id },
+                data: {
+                  stockQuantity: {
+                    decrement: Math.min(inv.stockQuantity, item.quantity),
+                  },
+                  reservedQuantity: {
+                    decrement: Math.min(inv.reservedQuantity, item.quantity),
+                  },
+                },
+              });
+
+              await tx.inventoryTransaction.create({
+                data: {
+                  inventoryId: inv.id,
+                  transactionType: InventoryTxType.ORDER_FULFILLED,
+                  quantityDelta: -item.quantity,
+                  referenceId: order.orderNumber,
+                  notes: `Order delivered and fulfilled #${order.orderNumber}`,
+                  createdBy: admin.id,
+                },
+              });
+            }
           }
         }
+
+        // Atomically synchronize the shipment belonging to that order
+        const existingShipment = await tx.shipment.findUnique({ where: { orderId } });
+        await tx.shipment.upsert({
+          where: { orderId },
+          update: {
+            shippingStatus: ShippingStatus.DELIVERED,
+            deliveredAt: existingShipment?.deliveredAt ?? new Date(),
+          },
+          create: {
+            orderId,
+            carrierName: 'Manual / Local Courier',
+            shippingStatus: ShippingStatus.DELIVERED,
+            deliveredAt: new Date(),
+          },
+        });
       }
 
       // 3. Notify customer of status change
@@ -197,8 +230,11 @@ export async function updateOrderStatusAction(rawInput: unknown) {
 /**
  * Updates or creates shipment and courier tracking details for an order.
  */
-export async function updateShipmentTrackingAction(rawInput: unknown) {
-  const admin = await requireAdmin();
+export async function updateShipmentTrackingAction(
+  rawInput: unknown,
+  executorAdmin?: AuthenticatedUser
+) {
+  const admin = await requireAdmin(executorAdmin);
   const parsed = UpdateShipmentSchema.safeParse(rawInput);
 
   if (!parsed.success) {
@@ -211,7 +247,7 @@ export async function updateShipmentTrackingAction(rawInput: unknown) {
   try {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { shipment: true },
+      include: { shipment: true, items: true },
     });
 
     if (!order) {
@@ -219,56 +255,152 @@ export async function updateShipmentTrackingAction(rawInput: unknown) {
     }
 
     const estDate = estimatedDelivery ? new Date(estimatedDelivery) : null;
+    const isDelivered = shippingStatus === ShippingStatus.DELIVERED;
+    const isDispatched =
+      shippingStatus === ShippingStatus.SHIPPED || shippingStatus === ShippingStatus.IN_TRANSIT;
 
-    const shipment = await prisma.shipment.upsert({
-      where: { orderId },
-      update: {
-        carrierName,
-        trackingNumber: trackingNumber ?? null,
-        trackingUrl: trackingUrl ?? null,
-        shippingStatus,
-        estimatedDelivery: estDate,
-        shippedAt:
-          shippingStatus === ShippingStatus.SHIPPED || shippingStatus === ShippingStatus.IN_TRANSIT
-            ? new Date()
-            : undefined,
-      },
-      create: {
-        orderId,
-        carrierName,
-        trackingNumber: trackingNumber ?? null,
-        trackingUrl: trackingUrl ?? null,
-        shippingStatus,
-        estimatedDelivery: estDate,
-        shippedAt:
-          shippingStatus === ShippingStatus.SHIPPED || shippingStatus === ShippingStatus.IN_TRANSIT
-            ? new Date()
-            : null,
-      },
-    });
+    // Determine if order status should advance
+    const shouldAdvanceToDelivered =
+      isDelivered &&
+      order.orderStatus !== OrderStatus.DELIVERED &&
+      order.orderStatus !== OrderStatus.CANCELLED &&
+      order.orderStatus !== OrderStatus.RETURNED;
 
-    // If shipment is dispatched and order was PACKED, advance to SHIPPED
-    if (
-      (shippingStatus === ShippingStatus.SHIPPED || shippingStatus === ShippingStatus.IN_TRANSIT) &&
-      order.orderStatus === OrderStatus.PACKED
-    ) {
-      await prisma.order.update({
-        where: { id: orderId },
-        data: { orderStatus: OrderStatus.SHIPPED },
-      });
-    }
+    const shouldAdvanceToShipped = isDispatched && order.orderStatus === OrderStatus.PACKED;
 
-    // Notify customer
-    await prisma.notification.create({
-      data: {
-        userId: order.userId,
-        title: `Shipment Update for Order #${order.orderNumber}`,
-        message: `Your package is with ${carrierName}. ${
-          trackingNumber ? `Tracking #: ${trackingNumber}` : ''
-        }`,
-        linkUrl: `/orders/${order.id}`,
+    const { shipment, orderTransitionedToDelivered } = await prisma.$transaction(
+      async (tx) => {
+        const now = new Date();
+        const existingShipment = await tx.shipment.findUnique({ where: { orderId } });
+
+        const shippedAtVal = isDispatched
+          ? (existingShipment?.shippedAt ?? now)
+          : existingShipment?.shippedAt;
+
+        const deliveredAtVal = isDelivered
+          ? (existingShipment?.deliveredAt ?? now)
+          : existingShipment?.deliveredAt;
+
+        const updatedShipment = await tx.shipment.upsert({
+          where: { orderId },
+          update: {
+            carrierName,
+            trackingNumber: trackingNumber ?? null,
+            trackingUrl: trackingUrl ?? null,
+            shippingStatus,
+            estimatedDelivery: estDate,
+            shippedAt: shippedAtVal,
+            deliveredAt: deliveredAtVal,
+          },
+          create: {
+            orderId,
+            carrierName,
+            trackingNumber: trackingNumber ?? null,
+            trackingUrl: trackingUrl ?? null,
+            shippingStatus,
+            estimatedDelivery: estDate,
+            shippedAt: isDispatched ? now : null,
+            deliveredAt: isDelivered ? now : null,
+          },
+        });
+
+        let transitionedToDelivered = false;
+
+        if (shouldAdvanceToDelivered) {
+          await tx.order.update({
+            where: { id: orderId },
+            data: { orderStatus: OrderStatus.DELIVERED },
+          });
+          transitionedToDelivered = true;
+
+          // Fulfill reserved inventory (decrement both stock and reserved)
+          // Idempotency: only fulfill if not already fulfilled
+          const alreadyFulfilled = await tx.inventoryTransaction.findFirst({
+            where: {
+              referenceId: order.orderNumber,
+              transactionType: InventoryTxType.ORDER_FULFILLED,
+            },
+          });
+
+          if (!alreadyFulfilled) {
+            for (const item of order.items) {
+              const inv = await tx.inventory.findFirst({
+                where: {
+                  productId: item.productId,
+                  variantId: item.variantId ?? null,
+                },
+              });
+
+              if (inv) {
+                await tx.inventory.update({
+                  where: { id: inv.id },
+                  data: {
+                    stockQuantity: {
+                      decrement: Math.min(inv.stockQuantity, item.quantity),
+                    },
+                    reservedQuantity: {
+                      decrement: Math.min(inv.reservedQuantity, item.quantity),
+                    },
+                  },
+                });
+
+                await tx.inventoryTransaction.create({
+                  data: {
+                    inventoryId: inv.id,
+                    transactionType: InventoryTxType.ORDER_FULFILLED,
+                    quantityDelta: -item.quantity,
+                    referenceId: order.orderNumber,
+                    notes: `Order delivered and fulfilled #${order.orderNumber} via courier tracking update`,
+                    createdBy: admin.id,
+                  },
+                });
+              }
+            }
+          }
+
+          // Create status update notification for DELIVERED exactly once
+          await tx.notification.create({
+            data: {
+              userId: order.userId,
+              title: `Order #${order.orderNumber} Status Update`,
+              message: 'Your order status has changed to DELIVERED.',
+              linkUrl: `/orders/${order.id}`,
+            },
+          });
+        } else if (shouldAdvanceToShipped) {
+          await tx.order.update({
+            where: { id: orderId },
+            data: { orderStatus: OrderStatus.SHIPPED },
+          });
+
+          await tx.notification.create({
+            data: {
+              userId: order.userId,
+              title: `Shipment Update for Order #${order.orderNumber}`,
+              message: `Your package is with ${carrierName}. ${
+                trackingNumber ? `Tracking #: ${trackingNumber}` : ''
+              }`,
+              linkUrl: `/orders/${order.id}`,
+            },
+          });
+        } else if (!isDelivered) {
+          // Standard tracking notification for non-delivered updates
+          await tx.notification.create({
+            data: {
+              userId: order.userId,
+              title: `Shipment Update for Order #${order.orderNumber}`,
+              message: `Your package is with ${carrierName}. ${
+                trackingNumber ? `Tracking #: ${trackingNumber}` : ''
+              }`,
+              linkUrl: `/orders/${order.id}`,
+            },
+          });
+        }
+
+        return { shipment: updatedShipment, orderTransitionedToDelivered: transitionedToDelivered };
       },
-    });
+      { timeout: 30000, maxWait: 15000 }
+    );
 
     await recordAdminActivity({
       actorId: admin.id,
@@ -277,6 +409,17 @@ export async function updateShipmentTrackingAction(rawInput: unknown) {
       entityId: shipment.id,
       newValues: { orderId, carrierName, trackingNumber, shippingStatus },
     });
+
+    if (orderTransitionedToDelivered) {
+      await recordAdminActivity({
+        actorId: admin.id,
+        action: 'ORDER_STATUS_UPDATED',
+        entity: 'Order',
+        entityId: orderId,
+        oldValues: { orderStatus: order.orderStatus },
+        newValues: { orderStatus: OrderStatus.DELIVERED, notes: 'Delivered via courier tracking update' },
+      });
+    }
 
     // Asynchronous observable customer email notification if shipment is dispatched
     if (shippingStatus === ShippingStatus.SHIPPED || shippingStatus === ShippingStatus.IN_TRANSIT) {
@@ -317,6 +460,11 @@ export async function updateShipmentTrackingAction(rawInput: unknown) {
 
     revalidatePath('/admin/orders');
     revalidatePath(`/admin/orders/${orderId}`);
+    if (orderTransitionedToDelivered) {
+      revalidatePath('/admin/inventory');
+      revalidatePath('/admin');
+      revalidatePath('/admin/dashboard');
+    }
 
     return {
       success: true,
@@ -329,6 +477,7 @@ export async function updateShipmentTrackingAction(rawInput: unknown) {
         shippingStatus: shipment.shippingStatus,
         estimatedDelivery: shipment.estimatedDelivery?.toISOString() ?? null,
         shippedAt: shipment.shippedAt?.toISOString() ?? null,
+        deliveredAt: shipment.deliveredAt?.toISOString() ?? null,
       },
     };
   } catch (error: any) {

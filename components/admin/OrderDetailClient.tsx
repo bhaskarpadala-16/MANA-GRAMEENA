@@ -69,6 +69,7 @@ interface OrderDetailClientProps {
       shippingStatus: ShippingStatus;
       estimatedDelivery?: Date | null;
       shippedAt?: Date | null;
+      deliveredAt?: Date | string | null;
     } | null;
     couponUsages?: {
       coupon: {
