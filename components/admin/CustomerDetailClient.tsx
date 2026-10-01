@@ -103,8 +103,11 @@ export function CustomerDetailClient({ customer }: CustomerDetailClientProps) {
               </span>
             </div>
             <p className="text-xs text-cream-400 mt-1">
-              Member since {new Date(customer.createdAt).toLocaleDateString('en-IN')} • Phone:{' '}
-              <span className="font-mono text-cream-200">{customer.phone || 'None'}</span>
+              Member since{' '}
+              <span suppressHydrationWarning>
+                {new Date(customer.createdAt).toLocaleDateString('en-IN')}
+              </span>{' '}
+              • Phone: <span className="font-mono text-cream-200">{customer.phone || 'None'}</span>
             </p>
           </div>
         </div>
@@ -225,7 +228,7 @@ export function CustomerDetailClient({ customer }: CustomerDetailClientProps) {
                           {o.orderNumber}
                         </a>
                       </td>
-                      <td className="py-2.5 text-cream-400">
+                      <td className="py-2.5 text-cream-400" suppressHydrationWarning>
                         {new Date(o.createdAt).toLocaleDateString('en-IN')}
                       </td>
                       <td className="py-2.5 text-cream-300">{o._count.items} item(s)</td>

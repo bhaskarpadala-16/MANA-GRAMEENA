@@ -18,13 +18,10 @@ export default async function AdminRolesPage() {
   try {
     superAdmin = await requireSuperAdmin();
   } catch (authError: any) {
-    if (authError?.message?.includes('UNAUTHORIZED')) {
-      redirect('/admin/login?returnUrl=/admin/roles');
-    }
     if (authError?.message?.includes('FORBIDDEN')) {
       redirect('/admin');
     }
-    throw authError;
+    redirect('/admin/login?returnUrl=/admin/roles');
   }
 
   const adminUsers = await getAdminUsers();

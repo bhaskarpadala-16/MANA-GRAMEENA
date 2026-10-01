@@ -20,27 +20,35 @@ export default async function AdminDashboardLayout({
   try {
     user = await requireAdmin();
   } catch (authError: any) {
-    if (authError?.message?.includes('UNAUTHORIZED')) {
-      redirect('/admin/login');
-    }
     if (authError?.message?.includes('FORBIDDEN')) {
       redirect('/admin/login?error=AccessDenied');
     }
-    throw authError;
+    redirect('/admin/login');
   }
 
-  // Load real-time operational badge counts
-  const [pendingOrdersCount, pendingPaymentCount, lowStockCount] = await Promise.all([
-    prisma.order.count({ where: { orderStatus: OrderStatus.PENDING } }),
-    prisma.paymentProof.count({ where: { reviewStatus: PaymentStatus.UNDER_REVIEW } }),
-    prisma.inventory.count({
-      where: {
-        stockQuantity: {
-          lte: prisma.inventory.fields.lowStockThreshold,
+  // Load real-time operational badge counts defensively
+  let pendingOrdersCount = 0;
+  let pendingPaymentCount = 0;
+  let lowStockCount = 0;
+
+  try {
+    const counts = await Promise.all([
+      prisma.order.count({ where: { orderStatus: OrderStatus.PENDING } }),
+      prisma.paymentProof.count({ where: { reviewStatus: PaymentStatus.UNDER_REVIEW } }),
+      prisma.inventory.count({
+        where: {
+          stockQuantity: {
+            lte: prisma.inventory.fields.lowStockThreshold,
+          },
         },
-      },
-    }),
-  ]);
+      }),
+    ]);
+    pendingOrdersCount = counts[0];
+    pendingPaymentCount = counts[1];
+    lowStockCount = counts[2];
+  } catch (badgeError) {
+    console.warn('Admin layout operational badge count error (fallback to 0):', badgeError);
+  }
 
   return (
     <div className="min-h-screen bg-herbal-950 text-cream-100 flex flex-col antialiased">

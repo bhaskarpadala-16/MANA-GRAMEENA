@@ -103,7 +103,12 @@ export default async function EditProductPage({
           priceOverride: v.priceOverride ? Number(v.priceOverride) : null,
           weightGrams: v.weightGrams,
           isActive: v.isActive,
-          inventory: v.inventory,
+          inventory: v.inventory
+            ? v.inventory.map((inv) => ({
+                stockQuantity: inv.stockQuantity,
+                reservedQuantity: inv.reservedQuantity,
+              }))
+            : [],
         }))}
       />
 

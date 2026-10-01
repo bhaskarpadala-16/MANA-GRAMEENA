@@ -738,7 +738,7 @@ export async function getAdminOrderDetail(orderId: string): Promise<AdminOrderDe
 }
 
 export async function getAdminPendingPaymentProofs() {
-  return await prisma.paymentProof.findMany({
+  const proofs = await prisma.paymentProof.findMany({
     where: { reviewStatus: PaymentStatus.UNDER_REVIEW },
     orderBy: { createdAt: 'desc' },
     include: {
@@ -765,6 +765,18 @@ export async function getAdminPendingPaymentProofs() {
       },
     },
   });
+
+  return proofs.map((p) => ({
+    ...p,
+    payment: {
+      ...p.payment,
+      amount: Number(p.payment.amount),
+      order: {
+        ...p.payment.order,
+        totalAmount: Number(p.payment.order.totalAmount),
+      },
+    },
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -848,7 +860,7 @@ export async function getAdminCustomers(params?: AdminCustomerFilterParams) {
 }
 
 export async function getAdminCustomerDetail(customerId: string) {
-  return await prisma.profile.findUnique({
+  const customer = await prisma.profile.findUnique({
     where: { id: customerId },
     include: {
       addresses: {
@@ -875,6 +887,16 @@ export async function getAdminCustomerDetail(customerId: string) {
       },
     },
   });
+
+  if (!customer) return null;
+
+  return {
+    ...customer,
+    orders: customer.orders.map((o) => ({
+      ...o,
+      totalAmount: Number(o.totalAmount),
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1032,7 +1054,12 @@ export async function getAdminCoupons(params?: AdminCouponFilterParams) {
   ]);
 
   return {
-    items,
+    items: items.map((c) => ({
+      ...c,
+      discountValue: Number(c.discountValue),
+      minOrderAmount: Number(c.minOrderAmount),
+      maxDiscountAmount: c.maxDiscountAmount ? Number(c.maxDiscountAmount) : null,
+    })),
     total,
     page,
     pageSize,
